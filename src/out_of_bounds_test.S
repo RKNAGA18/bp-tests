@@ -1,39 +1,50 @@
-#include "riscv_test.h"
-#include "test_macros.h"
+.section .text
+.global main
 
-RVTEST_RV64U
-RVTEST_CODE_BEGIN
+main:
+    # 1. Set up the trap handler vector
+    la t0, trap_handler
+    csrw mtvec, t0
+    
+    # 2. Set up the test addresses
+    li t1, 0x4000000000000000  # Address that triggers OOB (exceeds physical width)
+    la t3, valid_data          # Valid memory address in the .data section
 
-  # Save original trap vector
-  csrr t5, mtvec
-  
-  # Register our trap handler
-  la t0, trap_vector
-  csrw mtvec, t0
+    # 3. BACK-TO-BACK memory operations to test cycle alignment!
+    lw x0, 0(t3)               # Valid load (Should NOT fault)
+    lw t2, 0(t1)               # OOB load (SHOULD fault and jump to trap_handler)
+    
+    # 4. If we reach this line, the OOB load failed to trigger a trap!
+    j fail                     
 
-  # Trigger the fault: Load from an address outside paddr_width_p
-  li t1, 0x4000000000000000 
-  lw t2, 0(t1)
-
-  # If we reach here, hardware DID NOT trap (Failure)
-  j fail
-
-trap_vector:
-  # Check cause (mcause == 5 for Load Access Fault)
-  csrr t3, mcause
-  li t4, 5
-  bne t3, t4, fail
+trap_handler:
+    # 5. Verify the trap was actually caused by our OOB load
+    csrr t3, mcause
+    li t4, 5                   # Expecting Exception 5: Load Access Fault
+    bne t3, t4, fail
+    # If it is exactly 5, the test worked perfectly! Fall through to pass.
 
 pass:
-  csrw mtvec, t5
-  RVTEST_PASS
+    # Signal success (1) to the Verilator/BlackParrot testbench
+    li t0, 0x02110000          # Perch finish register
+    li t1, 0x1
+    sw t1, 0(t0)
+
+test_done:
+    wfi                        # Halt processor
+    j test_done
 
 fail:
-  RVTEST_FAIL
+    # Signal failure (2) to the Verilator/BlackParrot testbench
+    li t0, 0x02110000          # Perch finish register
+    li t1, 0x2
+    sw t1, 0(t0)
+    
+fail_loop:
+    wfi                        # Halt processor
+    j fail_loop
 
-RVTEST_CODE_END
-
-.data
-RVTEST_DATA_BEGIN
-  TEST_DATA
-RVTEST_DATA_END
+.section .data
+.align 3
+valid_data:
+    .dword 0xDEADBEEF          # Safe dummy data to read for the valid load
