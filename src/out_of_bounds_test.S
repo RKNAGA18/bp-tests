@@ -17,6 +17,7 @@ main:
     # 4. If we reach this line, the OOB load failed to trigger a trap!
     j fail                     
 
+.align 2
 trap_handler:
     # 5. Verify the trap was actually caused by our OOB load
     csrr t3, mcause
@@ -25,9 +26,9 @@ trap_handler:
     # If it is exactly 5, the test worked perfectly! Fall through to pass.
 
 pass:
-    # Signal success (1) to the Verilator/BlackParrot testbench
-    li t0, 0x02110000          # Perch finish register
-    li t1, 0x1
+    # Signal success (0) to the Verilator/BlackParrot testbench
+    li t0, 0x00102000          # Perch finish register
+    li t1, 0x0
     sw t1, 0(t0)
 
 test_done:
@@ -36,7 +37,7 @@ test_done:
 
 fail:
     # Signal failure (2) to the Verilator/BlackParrot testbench
-    li t0, 0x02110000          # Perch finish register
+    li t0, 0x00102000          # Perch finish register
     li t1, 0x2
     sw t1, 0(t0)
     
